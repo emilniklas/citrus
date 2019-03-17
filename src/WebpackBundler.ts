@@ -33,6 +33,10 @@ export class WebpackBundler implements Bundler {
     entrypoints: Map<string, Path>,
     outputDirectory: Path
   ): Promise<Map<string, Path[]>> {
+    if (entrypoints.size === 0) {
+      return new Map();
+    }
+
     const compiler = Webpack({
       ...this._config,
       entry: Array.from(entrypoints.entries()).reduce(

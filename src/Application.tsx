@@ -43,48 +43,46 @@ export class Application {
       body: string;
     }[] = [];
 
-    await Promise.all(
-      Array.from(this._pages.entries(), async ([path, element]) => {
+    // This has to be done in sequence because of fibers colliding.
+    for (const [path, element] of this._pages) {
+      await fiber(() => {
         const assets = new Set();
         const pageDirPath = out.join(path);
         let headContents: ReactNode = <></>;
-        const body = await fiber(() => {
-          return renderToStaticMarkup(
-            <CitrusContext.Provider
-              value={{
-                registerToHead: (node) => {
-                  headContents = (
-                    <>
-                      {headContents}
-                      {node}
-                    </>
-                  );
-                },
-                registerLiveComponent: (path) => {
-                  const p = Path.create(path);
-                  const id = createHash('sha1')
-                    .update(wait(this._fileSystem.readFile(p)))
-                    .digest()
-                    .toString('hex');
-                  liveComponents.set(id, p);
-                  assets.add(id);
-                  return id;
-                }
-              }}
-            >
-              {element}
-            </CitrusContext.Provider>
-          );
-        });
+        const body = renderToStaticMarkup(
+          <CitrusContext.Provider
+            value={{
+              registerToHead: (node) => {
+                headContents = (
+                  <>
+                    {headContents}
+                    {node}
+                  </>
+                );
+              },
+              registerLiveComponent: (path) => {
+                const p = Path.create(path);
+                const id = createHash('sha1')
+                  .update(wait(this._fileSystem.readFile(p)))
+                  .digest()
+                  .toString('hex');
+                liveComponents.set(id, p);
+                assets.add(id);
+                return id;
+              }
+            }}
+          >
+            {element}
+          </CitrusContext.Provider>
+        );
         pages.push({
           path: pageDirPath.join('index.html'),
           head: headContents,
           assets,
           body
         });
-      })
-    );
-    console.log(pages);
+      });
+    }
 
     const liveComponentWrappers = new Map<string, Path>();
 
