@@ -17,7 +17,7 @@ function memo(p: Path): Path {
 
 export class Path {
   private constructor(
-    private readonly _segments: string[],
+    public readonly segments: string[],
     public readonly isAbsolute: boolean
   ) {}
 
@@ -35,20 +35,20 @@ export class Path {
 
   join(other: Path | string): Path {
     if (typeof other === 'string') {
-      return new Path([...this._segments, other], this.isAbsolute);
+      return new Path([...this.segments, other], this.isAbsolute);
     }
     if (other.isAbsolute) {
       return other;
     }
-    return new Path([...this._segments, ...other._segments], this.isAbsolute);
+    return new Path([...this.segments, ...other.segments], this.isAbsolute);
   }
 
   toString(): string {
-    return this._segments.join(NodePath.sep);
+    return this.segments.join(NodePath.sep);
   }
 
   get dirname(): Path {
-    return new Path(this._segments.slice(0, -1), this.isAbsolute);
+    return new Path(this.segments.slice(0, -1), this.isAbsolute);
   }
 
   get isJavaScript(): boolean {
@@ -60,7 +60,7 @@ export class Path {
   }
 
   endsWith(part: string): boolean {
-    const lastSegment = this._segments[this._segments.length - 1];
+    const lastSegment = this.segments[this.segments.length - 1];
     if (!lastSegment) {
       return false;
     }
@@ -68,7 +68,7 @@ export class Path {
   }
 
   toUrl(): string {
-    return '/' + this._segments.join('/');
+    return '/' + this.segments.join('/');
   }
 
   absolute(): Path {

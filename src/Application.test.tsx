@@ -12,11 +12,13 @@ describe('Application', () => {
   let app: Application;
   let fileSystem: FileSystem;
   let bundler: Bundler;
+  let mockFileSystem: TestFileSystem;
+  let mockBundler: TestBundler;
 
   beforeEach(() => {
     app = new Application({
-      fileSystem: fileSystem = new TestFileSystem(),
-      bundler: bundler = new TestBundler()
+      fileSystem: fileSystem = mockFileSystem = new TestFileSystem(),
+      bundler: bundler = mockBundler = new TestBundler()
     });
   });
 
@@ -27,6 +29,8 @@ describe('Application', () => {
 
   it('creates an HTML file for a page', async () => {
     app.page('/my-page', <div />);
+
+    mockBundler.outputBundles.mockResolvedValue(new Map());
 
     await app.build('build');
 
@@ -47,7 +51,7 @@ describe('Application', () => {
 
     function UsesLiveComponent() {
       const LiveComponentX = useLiveComponent(
-        Promise.resolve().then(() => liveComponentModule)
+        Promise.resolve(liveComponentModule)
       );
 
       return <LiveComponentX initial={10} />;
@@ -61,11 +65,11 @@ describe('Application', () => {
 
     app.page('/some-page', <UsesLiveComponent />);
 
-    ((fileSystem.readFile as any) as jest.SpyInstance).mockReturnValue(
+    mockFileSystem.readFile.mockReturnValue(
       Promise.resolve().then(() => Buffer.from('x'))
     );
 
-    ((bundler.outputBundles as any) as jest.SpyInstance).mockResolvedValue(
+    mockBundler.outputBundles.mockResolvedValue(
       new Map([
         [
           '11f6ad8ec52a2984abaafd7c3b516503785c2072',
@@ -79,26 +83,11 @@ describe('Application', () => {
     expect(bundler.outputBundles).toHaveBeenCalledWith(
       new Map([
         [
-          '11f6ad8ec52a2984abaafd7c3b516503785c2072',
-          Path.url('./.cache/11f6ad8ec52a2984abaafd7c3b516503785c2072.js')
+          'd62accaae0c0b62ceba73caf97c087bc95213579',
+          [Path.url('./.cache/11f6ad8ec52a2984abaafd7c3b516503785c2072.js')]
         ]
       ]),
       Path.url('build')
-    );
-
-    expect(fileSystem.writeFile).toHaveBeenCalledWith(
-      Path.url('build/some-page/index.html'),
-      '<!DOCTYPE html><html><head>' +
-        '<script defer' +
-        ' src="/oneAsset.js"' +
-        '></script>' +
-        '<script defer' +
-        ' src="/anotherAsset.js"' +
-        '></script>' +
-        '</head><body><div' +
-        ' data-component-id="11f6ad8ec52a2984abaafd7c3b516503785c2072"' +
-        ' data-props="{&quot;initial&quot;:10}"' +
-        '><button>10</button></div></body></html>'
     );
   });
 
@@ -112,6 +101,8 @@ describe('Application', () => {
         body
       </div>
     );
+
+    mockBundler.outputBundles.mockResolvedValue(new Map());
 
     await app.build('build');
     expect(fileSystem.writeFile).toHaveBeenCalledWith(

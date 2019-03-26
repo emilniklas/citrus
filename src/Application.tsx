@@ -8,6 +8,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { CitrusContext } from './CitrusContext';
 import { createHash } from 'crypto';
 import { wait, fiber } from './Fibers';
+import { ServerStyleSheet, StyleSheetManager } from 'styled-components';
+import { LocationContext } from './useLocation';
 
 export class Application {
   private readonly _bundler: Bundler;
@@ -35,8 +37,10 @@ export class Application {
     await this._fileSystem.ensureDirectory(out);
 
     const liveComponents = new Map<string, Path>();
+    const stylesMap = new Map<string, string>();
 
     const pages: {
+      id: string;
       path: Path;
       head: ReactNode;
       assets: Set<string>;
@@ -46,36 +50,60 @@ export class Application {
     // This has to be done in sequence because of fibers colliding.
     for (const [path, element] of this._pages) {
       await fiber(() => {
-        const assets = new Set();
+        const pageId = hash(path.toString());
+
+        const assets = new Set<string>();
         const pageDirPath = out.join(path);
         let headContents: ReactNode = <></>;
+        const sheet = new ServerStyleSheet();
         const body = renderToStaticMarkup(
-          <CitrusContext.Provider
-            value={{
-              registerToHead: (node) => {
-                headContents = (
-                  <>
-                    {headContents}
-                    {node}
-                  </>
-                );
-              },
-              registerLiveComponent: (path) => {
-                const p = Path.create(path);
-                const id = createHash('sha1')
-                  .update(wait(this._fileSystem.readFile(p)))
-                  .digest()
-                  .toString('hex');
-                liveComponents.set(id, p);
-                assets.add(id);
-                return id;
-              }
-            }}
-          >
-            {element}
-          </CitrusContext.Provider>
+          <StyleSheetManager sheet={sheet.instance}>
+            <LocationContext.Provider
+              value={{
+                path: path.toUrl(),
+                segments: path.segments
+              }}
+            >
+              <CitrusContext.Provider
+                value={{
+                  registerToHead: (node) => {
+                    headContents = (
+                      <>
+                        {headContents}
+                        {node}
+                      </>
+                    );
+                  },
+                  registerLiveComponent: (path) => {
+                    const p = Path.create(path);
+                    const id = hash(wait(this._fileSystem.readFile(p)));
+                    liveComponents.set(id, p);
+                    assets.add(id);
+                    return id;
+                  },
+                  registerStyles: (css) => {
+                    const styleId = hash(css);
+                    stylesMap.set(styleId, css);
+                    assets.add(styleId);
+                  }
+                }}
+              >
+                {element}
+              </CitrusContext.Provider>
+            </LocationContext.Provider>
+          </StyleSheetManager>
         );
+        const pattern = /<style.*?>([^]*)<\/style>/g;
+        let match: RegExpExecArray | null;
+        const styleTags = sheet.getStyleTags();
+        while ((match = pattern.exec(styleTags))) {
+          const css = match[1];
+          const styleId = hash(css);
+          stylesMap.set(styleId, css);
+          assets.add(styleId);
+        }
         pages.push({
+          id: pageId,
           path: pageDirPath.join('index.html'),
           head: headContents,
           assets,
@@ -84,7 +112,7 @@ export class Application {
       });
     }
 
-    const liveComponentWrappers = new Map<string, Path>();
+    const assetModules = new Map<string, Path>();
 
     await Promise.all(
       Array.from(liveComponents, async ([id, componentPath]) => {
@@ -104,28 +132,36 @@ export class Application {
 
         await this._fileSystem.writeFile(wrapperPath, wrapperCode);
 
-        liveComponentWrappers.set(id, wrapperPath);
+        assetModules.set(id, wrapperPath);
       })
     );
 
-    const bundles = await this._bundler.outputBundles(
-      liveComponentWrappers,
-      out
+    await Promise.all(
+      Array.from(stylesMap, async ([id, css]) => {
+        const wrapperPath = Path.url('./.cache').join(id + '.css');
+
+        await this._fileSystem.writeFile(wrapperPath, css);
+
+        assetModules.set(id, wrapperPath);
+      })
     );
+
+    const entrypoints = new Map<string, Path[]>();
+
+    for (const page of pages) {
+      entrypoints.set(
+        page.id,
+        Array.from(page.assets, (aid) => assetModules.get(aid)).filter(
+          (p: Path | undefined): p is Path => p !== undefined
+        )
+      );
+    }
+
+    const bundles = await this._bundler.outputBundles(entrypoints, out);
 
     await Promise.all(
       pages.map(async (page) => {
-        const assetsToInclude = new Set<Path>();
-
-        for (const id of page.assets) {
-          const assetsInBundle = bundles.get(id);
-          if (assetsInBundle === undefined) {
-            continue;
-          }
-          for (const assetInBundle of assetsInBundle) {
-            assetsToInclude.add(assetInBundle);
-          }
-        }
+        const assetsToInclude = bundles.get(page.id) || [];
 
         await this._fileSystem.writeFile(
           page.path,
@@ -148,4 +184,11 @@ export class Application {
       })
     );
   }
+}
+
+function hash(value: string | Buffer): string {
+  return createHash('sha1')
+    .update(value)
+    .digest()
+    .toString('hex');
 }

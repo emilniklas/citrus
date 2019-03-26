@@ -5,12 +5,15 @@ export const CitrusContext = createContext<CitrusContext.Value>({
     return '';
   },
 
-  registerToHead() {}
+  registerToHead() {},
+
+  registerStyles() {}
 });
 
 export namespace CitrusContext {
   export interface Value {
     registerLiveComponent(path: string): string;
     registerToHead(node: ReactNode): void;
+    registerStyles(css: string): void;
   }
 }
