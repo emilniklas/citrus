@@ -24,7 +24,11 @@ export class WebpackBundler implements Bundler {
   } = {}): PartialWebpackConfiguration {
     return {
       mode,
-      plugins: [new MiniCssExtractPlugin()],
+      plugins: [
+        new MiniCssExtractPlugin({
+          filename: '[hash].css'
+        })
+      ],
       module: {
         rules: [
           {
@@ -37,7 +41,34 @@ export class WebpackBundler implements Bundler {
         minimizer:
           mode === 'production'
             ? [new OptimizeCSSAssetsPlugin(), new TerserPlugin()]
-            : []
+            : [],
+        splitChunks: {
+          chunks: 'initial',
+          minSize: 30000,
+          maxSize: 0,
+          minChunks: 1,
+          maxAsyncRequests: 5,
+          maxInitialRequests: 3,
+          automaticNameDelimiter: '~',
+          name: true,
+          cacheGroups: {
+            vendors: {
+              test: /[\\/]node_modules[\\/]/,
+              priority: -10
+            },
+            default: {
+              minChunks: 2,
+              priority: -20,
+              reuseExistingChunk: true
+            },
+            styles: {
+              name: 'styles',
+              test: /\.css$/,
+              chunks: 'initial',
+              enforce: true
+            }
+          }
+        }
       }
     };
   }
@@ -60,7 +91,9 @@ export class WebpackBundler implements Bundler {
       ...this._config,
       entry,
       output: {
-        path: outputDirectory.absolute().toString()
+        path: outputDirectory.absolute().toString(),
+        filename: '[hash].js',
+        chunkFilename: '[chunkhash].js'
       }
     });
 
