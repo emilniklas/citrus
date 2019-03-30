@@ -10,11 +10,13 @@ import { createHash } from 'crypto';
 import { wait, fiber } from './Fibers';
 import { ServerStyleSheet, StyleSheetManager } from 'styled-components';
 import { LocationContext } from './useLocation';
+import { Readable } from 'stream';
 
 export class Application {
   private readonly _bundler: Bundler;
   private readonly _fileSystem: FileSystem;
   private readonly _pages: Map<Path, ReactElement>;
+  private readonly _files: Map<Path, Readable>;
 
   constructor({
     bundler = new WebpackBundler(),
@@ -26,15 +28,42 @@ export class Application {
     this._bundler = bundler;
     this._fileSystem = fileSystem;
     this._pages = new Map();
+    this._files = new Map();
   }
 
   page(path: string, element: ReactElement) {
     this._pages.set(Path.url(path), element);
   }
 
+  file(path: string, body: Readable | Buffer | string) {
+    if (body instanceof Readable) {
+      this._files.set(Path.url(path), body);
+    } else {
+      const stream = new Readable();
+      stream.push(body);
+      stream.push(null);
+      this._files.set(Path.url(path), stream);
+    }
+  }
+
+  json(
+    path: string,
+    body: any,
+    replacer?: (key: string, value: any) => any,
+    space?: string | number
+  ) {
+    this.file(path, JSON.stringify(body, replacer, space));
+  }
+
   async build(outputDirectory: string) {
     const out = Path.create(outputDirectory);
     await this._fileSystem.ensureDirectory(out);
+
+    await Promise.all(
+      Array.from(this._files, ([path, file]) => {
+        return this._fileSystem.pipeToFile(out.join(path), file);
+      })
+    );
 
     const liveComponents = new Map<string, Path>();
     const stylesMap = new Map<string, string>();
@@ -93,7 +122,7 @@ export class Application {
             </LocationContext.Provider>
           </StyleSheetManager>
         );
-        const pattern = /<style.*?>([^]*)<\/style>/g;
+        const pattern = /<style.*?>([^]*?)<\/style>/g;
         let match: RegExpExecArray | null;
         const styleTags = sheet.getStyleTags();
         while ((match = pattern.exec(styleTags))) {

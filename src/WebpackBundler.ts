@@ -4,6 +4,7 @@ import { Path } from './Path';
 
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin');
+const TerserPlugin = require('terser-webpack-plugin');
 
 type Without<T, K> = Pick<T, Exclude<keyof T, K>>;
 type PartialWebpackConfiguration = Without<
@@ -13,11 +14,16 @@ type PartialWebpackConfiguration = Without<
 
 export class WebpackBundler implements Bundler {
   constructor(
-    private readonly _config: PartialWebpackConfiguration = WebpackBundler.DefaultConfiguration
+    private readonly _config: PartialWebpackConfiguration = WebpackBundler.DefaultConfiguration()
   ) {}
 
-  static get DefaultConfiguration(): PartialWebpackConfiguration {
+  static DefaultConfiguration({
+    mode = 'production'
+  }: {
+    mode?: 'production' | 'development';
+  } = {}): PartialWebpackConfiguration {
     return {
+      mode,
       plugins: [new MiniCssExtractPlugin()],
       module: {
         rules: [
@@ -28,7 +34,10 @@ export class WebpackBundler implements Bundler {
         ]
       },
       optimization: {
-        minimizer: [new OptimizeCSSAssetsPlugin()]
+        minimizer:
+          mode === 'production'
+            ? [new OptimizeCSSAssetsPlugin(), new TerserPlugin()]
+            : []
       }
     };
   }
@@ -60,7 +69,11 @@ export class WebpackBundler implements Bundler {
         if (err) {
           reject(err);
         } else if (stats.hasErrors()) {
-          reject(stats.toJson().errors);
+          reject(
+            new MultiError(
+              stats.toJson().errors.map((m: string) => new Error(m))
+            )
+          );
         } else {
           const entrypoints: {
             [id: string]: { assets: string[] };
@@ -75,5 +88,13 @@ export class WebpackBundler implements Bundler {
         }
       });
     });
+  }
+}
+
+class MultiError extends Error {
+  constructor(public readonly errors: Error[]) {
+    super(errors.map((e) => e.message).join(', '));
+
+    Object.setPrototypeOf(this, MultiError.prototype);
   }
 }
