@@ -1,18 +1,16 @@
-import { FileSystem } from './FileSystem';
-import { Path } from './Path';
-import mkdirp from 'mkdirp';
-import { promisify } from 'util';
-import NodeFs from 'fs';
-import { Readable } from 'stream';
-import { resolve } from 'dns';
+import { FileSystem } from "./FileSystem";
+import { Path } from "./Path";
+import mkdirp from "mkdirp";
+import { promisify } from "util";
+import NodeFs from "fs";
+import { Readable } from "stream";
 
 const mkdirpPromise = promisify(mkdirp);
 const writeFile = promisify(NodeFs.writeFile);
-const readFile = promisify(NodeFs.readFile);
 
 export class NodeFileSystem implements FileSystem {
-  readFile(path: Path): Promise<Buffer> {
-    return readFile(path.toString());
+  readFile(path: Path): Buffer {
+    return NodeFs.readFileSync(path.toString());
   }
 
   async ensureDirectory(path: Path) {
@@ -29,8 +27,8 @@ export class NodeFileSystem implements FileSystem {
 
     return new Promise<void>((resolve, reject) => {
       contents
-        .on('end', resolve)
-        .on('error', reject)
+        .on("end", resolve)
+        .on("error", reject)
         .pipe(NodeFs.createWriteStream(path.toString()));
     });
   }

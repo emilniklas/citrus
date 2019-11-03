@@ -1,15 +1,15 @@
-import { Bundler } from './Bundler';
-import Webpack from 'webpack';
-import { Path } from './Path';
+import { Bundler } from "./Bundler";
+import Webpack from "webpack";
+import { Path } from "./Path";
 
-const MiniCssExtractPlugin = require('mini-css-extract-plugin');
-const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin');
-const TerserPlugin = require('terser-webpack-plugin');
+const MiniCssExtractPlugin = require("mini-css-extract-plugin");
+const OptimizeCSSAssetsPlugin = require("optimize-css-assets-webpack-plugin");
+const TerserPlugin = require("terser-webpack-plugin");
 
 type Without<T, K> = Pick<T, Exclude<keyof T, K>>;
 type PartialWebpackConfiguration = Without<
   Webpack.Configuration,
-  'entry' | 'output'
+  "entry" | "output"
 >;
 
 export class WebpackBundler implements Bundler {
@@ -18,38 +18,38 @@ export class WebpackBundler implements Bundler {
   ) {}
 
   static DefaultConfiguration({
-    mode = 'production'
+    mode = "production"
   }: {
-    mode?: 'production' | 'development';
+    mode?: "production" | "development";
   } = {}): PartialWebpackConfiguration {
     return {
       mode,
       plugins: [
         new MiniCssExtractPlugin({
-          filename: '[hash].css'
+          filename: mode === "production" ? "[hash].css" : "[name].css"
         })
       ],
       module: {
         rules: [
           {
             test: /\.css$/,
-            loader: [MiniCssExtractPlugin.loader, 'css-loader']
+            loader: [MiniCssExtractPlugin.loader, "css-loader"]
           }
         ]
       },
       optimization: {
         minimizer:
-          mode === 'production'
+          mode === "production"
             ? [new OptimizeCSSAssetsPlugin(), new TerserPlugin()]
             : [],
         splitChunks: {
-          chunks: 'initial',
+          chunks: "initial",
           minSize: 30000,
           maxSize: 0,
           minChunks: 1,
           maxAsyncRequests: 5,
           maxInitialRequests: 3,
-          automaticNameDelimiter: '~',
+          automaticNameDelimiter: "~",
           name: true,
           cacheGroups: {
             vendors: {
@@ -62,9 +62,9 @@ export class WebpackBundler implements Bundler {
               reuseExistingChunk: true
             },
             styles: {
-              name: 'styles',
+              name: "styles",
               test: /\.css$/,
-              chunks: 'initial',
+              chunks: "initial",
               enforce: true
             }
           }
@@ -92,8 +92,9 @@ export class WebpackBundler implements Bundler {
       entry,
       output: {
         path: outputDirectory.absolute().toString(),
-        filename: '[hash].js',
-        chunkFilename: '[chunkhash].js'
+        filename: "[name].js",
+        chunkFilename:
+          this._config.mode === "production" ? "[chunkhash].js" : "[name].js"
       }
     });
 
@@ -126,7 +127,7 @@ export class WebpackBundler implements Bundler {
 
 class MultiError extends Error {
   constructor(public readonly errors: Error[]) {
-    super(errors.map((e) => e.message).join(', '));
+    super(errors.map(e => e.message).join(", "));
 
     Object.setPrototypeOf(this, MultiError.prototype);
   }
