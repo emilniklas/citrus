@@ -1,23 +1,12 @@
-import React from 'react';
-import { useContext } from 'react';
-import { CitrusContext } from './CitrusContext';
-import { wait } from './Fibers';
+import React from "react";
+import { useContext } from "react";
+import { CitrusContext } from "./CitrusContext";
 
-export function useLiveComponent<T>(importPromise: Promise<{ default: T }>): T {
+export function useLiveComponent<T>(path: string): T {
   const { registerLiveComponent } = useContext(CitrusContext);
-  const module = wait(importPromise);
 
-  const requireCache =
-    process.env.NODE_ENV === 'test'
-      ? (global as any).__requireCache
-      : require.cache;
-
-  let id!: string;
-  for (const [absolutePath, cachedModule] of Object.entries(requireCache)) {
-    if ((cachedModule as any).exports === module) {
-      id = registerLiveComponent(absolutePath);
-    }
-  }
+  const id = registerLiveComponent(path);
+  const module = require(path);
 
   const WrappedComponent = module.default as any;
 
@@ -26,7 +15,7 @@ export function useLiveComponent<T>(importPromise: Promise<{ default: T }>): T {
     return (
       <div
         data-component-id={id}
-        data-props={encodedProps === '{}' ? undefined : encodedProps}
+        data-props={encodedProps === "{}" ? undefined : encodedProps}
       >
         <WrappedComponent {...props} />
       </div>

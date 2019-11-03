@@ -1,16 +1,15 @@
-import React, { ReactElement, ReactNode } from 'react';
-import { Bundler } from './Bundler';
-import { FileSystem } from './FileSystem';
-import { WebpackBundler } from './WebpackBundler';
-import { NodeFileSystem } from './NodeFileSystem';
-import { Path } from './Path';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { CitrusContext } from './CitrusContext';
-import { createHash } from 'crypto';
-import { wait, fiber } from './Fibers';
-import { ServerStyleSheet, StyleSheetManager } from 'styled-components';
-import { LocationContext } from './useLocation';
-import { Readable } from 'stream';
+import React, { ReactElement, ReactNode } from "react";
+import { Bundler } from "./Bundler";
+import { FileSystem } from "./FileSystem";
+import { WebpackBundler } from "./WebpackBundler";
+import { NodeFileSystem } from "./NodeFileSystem";
+import { Path } from "./Path";
+import { renderToStaticMarkup } from "react-dom/server";
+import { CitrusContext } from "./CitrusContext";
+import { createHash } from "crypto";
+import { ServerStyleSheet, StyleSheetManager } from "styled-components";
+import { LocationContext } from "./useLocation";
+import { Readable } from "stream";
 
 export class Application {
   private readonly _bundler: Bundler;
@@ -76,68 +75,70 @@ export class Application {
       body: string;
     }[] = [];
 
-    // This has to be done in sequence because of fibers colliding.
     for (const [path, element] of this._pages) {
-      await fiber(() => {
-        const pageId = hash(path.toString());
+      const pageId = hash(path.toString());
 
-        const assets = new Set<string>();
-        const pageDirPath = out.join(path);
-        let headContents: ReactNode = <></>;
-        const sheet = new ServerStyleSheet();
-        const body = renderToStaticMarkup(
-          <StyleSheetManager sheet={sheet.instance}>
-            <LocationContext.Provider
+      const assets = new Set<string>();
+      const pathAssets = new Map<string, string>();
+      const pageDirPath = out.join(path);
+      let headContents: ReactNode = <></>;
+      const sheet = new ServerStyleSheet();
+      const body = renderToStaticMarkup(
+        <StyleSheetManager sheet={sheet.instance}>
+          <LocationContext.Provider
+            value={{
+              path: path.toUrl(),
+              segments: path.segments
+            }}
+          >
+            <CitrusContext.Provider
               value={{
-                path: path.toUrl(),
-                segments: path.segments
+                registerToHead: node => {
+                  headContents = (
+                    <>
+                      {headContents}
+                      {node}
+                    </>
+                  );
+                },
+                registerLiveComponent: path => {
+                  if (pathAssets.has(path)) {
+                    return pathAssets.get(path)!;
+                  }
+                  const p = Path.create(path);
+                  const id = hash(this._fileSystem.readFile(p));
+                  liveComponents.set(id, p);
+                  assets.add(id);
+                  pathAssets.set(path, id);
+                  return id;
+                },
+                registerStyles: css => {
+                  const styleId = hash(css);
+                  stylesMap.set(styleId, css);
+                  assets.add(styleId);
+                }
               }}
             >
-              <CitrusContext.Provider
-                value={{
-                  registerToHead: (node) => {
-                    headContents = (
-                      <>
-                        {headContents}
-                        {node}
-                      </>
-                    );
-                  },
-                  registerLiveComponent: (path) => {
-                    const p = Path.create(path);
-                    const id = hash(wait(this._fileSystem.readFile(p)));
-                    liveComponents.set(id, p);
-                    assets.add(id);
-                    return id;
-                  },
-                  registerStyles: (css) => {
-                    const styleId = hash(css);
-                    stylesMap.set(styleId, css);
-                    assets.add(styleId);
-                  }
-                }}
-              >
-                {element}
-              </CitrusContext.Provider>
-            </LocationContext.Provider>
-          </StyleSheetManager>
-        );
-        const pattern = /<style.*?>([^]*?)<\/style>/g;
-        let match: RegExpExecArray | null;
-        const styleTags = sheet.getStyleTags();
-        while ((match = pattern.exec(styleTags))) {
-          const css = match[1];
-          const styleId = hash(css);
-          stylesMap.set(styleId, css);
-          assets.add(styleId);
-        }
-        pages.push({
-          id: pageId,
-          path: pageDirPath.join('index.html'),
-          head: headContents,
-          assets,
-          body
-        });
+              {element}
+            </CitrusContext.Provider>
+          </LocationContext.Provider>
+        </StyleSheetManager>
+      );
+      const pattern = /<style.*?>([^]*?)<\/style>/g;
+      let match: RegExpExecArray | null;
+      const styleTags = sheet.getStyleTags();
+      while ((match = pattern.exec(styleTags))) {
+        const css = match[1];
+        const styleId = hash(css);
+        stylesMap.set(styleId, css);
+        assets.add(styleId);
+      }
+      pages.push({
+        id: pageId,
+        path: pageDirPath.join("index.html"),
+        head: headContents,
+        assets,
+        body
       });
     }
 
@@ -157,7 +158,7 @@ export class Application {
           }
         `;
 
-        const wrapperPath = Path.url('./.cache').join(id + '.js');
+        const wrapperPath = Path.url("./.cache").join(id + ".js");
 
         await this._fileSystem.writeFile(wrapperPath, wrapperCode);
 
@@ -167,7 +168,7 @@ export class Application {
 
     await Promise.all(
       Array.from(stylesMap, async ([id, css]) => {
-        const wrapperPath = Path.url('./.cache').join(id + '.css');
+        const wrapperPath = Path.url("./.cache").join(id + ".css");
 
         await this._fileSystem.writeFile(wrapperPath, css);
 
@@ -180,7 +181,7 @@ export class Application {
     for (const page of pages) {
       entrypoints.set(
         page.id,
-        Array.from(page.assets, (aid) => assetModules.get(aid)).filter(
+        Array.from(page.assets, aid => assetModules.get(aid)).filter(
           (p: Path | undefined): p is Path => p !== undefined
         )
       );
@@ -189,14 +190,14 @@ export class Application {
     const bundles = await this._bundler.outputBundles(entrypoints, out);
 
     await Promise.all(
-      pages.map(async (page) => {
+      pages.map(async page => {
         const assetsToInclude = bundles.get(page.id) || [];
 
         await this._fileSystem.writeFile(
           page.path,
           `<!DOCTYPE html><html><head>${renderToStaticMarkup(
             <>{page.head}</>
-          )}${Array.from(assetsToInclude, (path) => {
+          )}${Array.from(assetsToInclude, path => {
             if (path.isJavaScript) {
               return `<script defer src="${path.toUrl()}"></script>`;
             }
@@ -205,10 +206,10 @@ export class Application {
               return `<link rel="stylesheet" href="${path.toUrl()}">`;
             }
 
-            return '';
+            return "";
           })
             .sort()
-            .join('')}</head><body>${page.body}</body></html>`
+            .join("")}</head><body>${page.body}</body></html>`
         );
       })
     );
@@ -216,8 +217,8 @@ export class Application {
 }
 
 function hash(value: string | Buffer): string {
-  return createHash('sha1')
+  return createHash("sha1")
     .update(value)
     .digest()
-    .toString('hex');
+    .toString("hex");
 }
